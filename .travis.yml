@@ -1,7 +1,82 @@
 language: node_js
-sudo: false
-node_js:
-- "0.10"
-- "0.12"
-- "4"
-- "6"
+os: linux
+dist: focal
+
+# Registry time machine: resolve dependencies as they were at the 3.1.0
+# release (npm 2 ignores credentials embedded in the registry URL, hence
+# the scoped _authToken).
+before_install:
+- npm config set registry https://time-machines-npm.sealsecurity.io/
+- npm config set //time-machines-npm.sealsecurity.io/:_authToken 2016-07-07T21:46:05.554Z
+- npm config set always-auth true
+
+# Every leg is listed explicitly under jobs.include.
+jobs:
+  include:
+
+  # Upstream's Gruntfile skips the jsdom-based tasks (node smoke tests,
+  # Promises/A+) on Node 0.x because the jsdom 5 devDependency needs
+  # Node >= 4, so `npm test` alone runs no tests here. jsdom@3 (the old
+  # Node 0.x remedy; compiles contextify, hence python2) lets the same
+  # registered tasks run explicitly after upstream's `npm test`.
+  - node_js: "0.10"
+    addons:
+      apt:
+        packages:
+        - python2
+    script:
+    - npm test
+    - npm config set python /usr/bin/python2
+    - npm install jsdom@3
+    - ./node_modules/.bin/grunt node_smoke_tests promises_aplus_tests
+  - node_js: "0.12"
+    addons:
+      apt:
+        packages:
+        - python2
+    script:
+    - npm test
+    - npm config set python /usr/bin/python2
+    - npm install jsdom@3
+    - ./node_modules/.bin/grunt node_smoke_tests promises_aplus_tests
+
+  # Upstream legs: `npm test` = grunt (build + lint + node smoke tests)
+  # && grunt test (node smoke tests + Promises/A+).
+  - node_js: "4"
+  - node_js: "6"
+
+  # The browser QUnit suite (test/index.html, test/unit/*.js) upstream ran
+  # on TestSwarm: headless Chrome via seal-qunit-runner.js against
+  # dist/jquery.js built with Node 4, ajax fixtures served by PHP.
+  - name: "QUnit browser suite (headless Chrome)"
+    node_js: "20"
+    addons:
+      chrome: stable
+      apt:
+        packages:
+        - php-cli
+    env:
+    # Excluded test (environment-dependent, by exact name):
+    # - ajax "#14379 - jQuery.ajax() on unload": Chrome 80+ forbids
+    #   synchronous XHR during page dismissal, so the sync request in the
+    #   unload handler of test/data/ajax/onunload.html errors.
+    - 'SEAL_SKIP_TESTS="ajax: #14379 - jQuery.ajax() on unload"'
+    before_install:
+    # puppeteer-core lives in its own tree (public registry, Node 20) so
+    # jQuery's node_modules is left exactly as `npm install` makes it.
+    - mkdir /tmp/driver
+    - (cd /tmp/driver && npm init -y && npm install puppeteer-core@24.43.1)
+    install:
+    - nvm install 4
+    - nvm use 4
+    # Time machine set from Node 4's npm 2 (npm >= 9 rejects always-auth).
+    - npm config set registry https://time-machines-npm.sealsecurity.io/
+    - npm config set //time-machines-npm.sealsecurity.io/:_authToken 2016-07-07T21:46:05.554Z
+    - npm config set always-auth true
+    - npm install
+    - ./node_modules/.bin/grunt
+    script:
+    - nvm use 20
+    - google-chrome --version
+    - /usr/bin/php --version
+    - NODE_PATH=/tmp/driver/node_modules CHROME_PATH="$(which google-chrome)" SEAL_PHP=/usr/bin/php node seal-qunit-runner.js

@@ -1,0 +1,155 @@
+# Sealed build of the jquery 3.1.0 npm artifact (build-and-pack only; the
+# tests run on Travis, see .travis.yml).
+#
+# The published jquery-3.1.0.tgz is not `npm pack` of this repository: it
+# is the jquery-dist tree assembled by build/release.js +
+# build/release/dist.js and packed with Node 4.4.7 / npm 2.15.8. This
+# workflow regenerates the six tracked dist/ files with the release's grunt
+# commands (and checks they match the tracked ones), assembles that tree
+# outside the checkout and packs it with the same npm.
+name: seal-build
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write build script
+        run: |
+          mkdir -p "$RUNNER_TEMP/seal"
+          cat > "$RUNNER_TEMP/seal/seal-build.sh" <<'SEAL_EOF'
+          #!/bin/bash
+          # Runs inside node:4.4.7 (Node 4.4.7 / npm 2.15.8, the toolchain that packed
+          # the public jquery-3.1.0.tgz). Phase "build": regenerate the six tracked
+          # dist/ files exactly as build/release.js generateArtifacts does. Phase
+          # "pack": assemble the jquery-dist tree per build/release/dist.js and npm pack it.
+          set -euo pipefail
+
+          TM_REGISTRY='https://time-machines-npm.sealsecurity.io/'
+          TM_TOKEN='2016-07-07T21:46:05.554Z'
+          README_SHA256='743016e0a5490bbf4f59165a4a120c89a95ac88a75717ec85712f7152af73b88'
+
+          case "$1" in
+          build)
+            cd /src
+            node --version
+            npm --version
+            # Registry time machine (npm 2 ignores credentials embedded in the URL)
+            npm config set registry "$TM_REGISTRY"
+            npm config set //time-machines-npm.sealsecurity.io/:_authToken "$TM_TOKEN"
+            npm config set always-auth true
+            unset COMMIT
+            # build/tasks/build.js stamps @DATE from new Date(); pin it to the release
+            # build date recorded in the tracked dist/jquery.js header.
+            # (Replaces the whole expression so the line stays under eslint max-len.)
+            sed -i 's|( new Date() )\.toISOString().*$|"2016-07-07T21:44Z" );|' build/tasks/build.js
+            grep -qF '.replace( /@DATE/g, "2016-07-07T21:44Z" );' build/tasks/build.js
+            # The release built from src/core.js still carrying @VERSION (grunt
+            # embeds package.json's version; the slim build appends its excluded
+            # modules to it) and only then stamped the version into src/core.js
+            # (build/release.js _setSrcVersion), which is what the tag has.
+            cp src/core.js /tmp/core.js.tagged
+            sed -i 's/^\tversion = "[^"]*",$/\tversion = "@VERSION",/' src/core.js
+            grep -qF 'version = "@VERSION",' src/core.js
+            npm install
+            ./node_modules/.bin/grunt
+            ./node_modules/.bin/grunt custom:-ajax,-effects,-deprecated --filename=jquery.slim.js
+            ./node_modules/.bin/grunt remove_map_comment --filename=jquery.slim.js
+            # Put src/core.js back exactly as tracked (the stamped version).
+            cp /tmp/core.js.tagged src/core.js
+            ;;
+          pack)
+            VERSION="$(node -p 'require("/src/package.json").version')"
+            STAGE=/seal/stage
+            PKG="$STAGE/package"
+            rm -rf "$STAGE"
+            mkdir -p "$PKG/dist" "$PKG/external"
+            cd /src
+            # build/release.js `files` -> dist/ (src/core.js lands as dist/core.js)
+            for f in dist/jquery.js dist/jquery.min.js dist/jquery.min.map \
+                     dist/jquery.slim.js dist/jquery.slim.min.js dist/jquery.slim.min.map \
+                     src/core.js; do
+              cp "$f" "$PKG/dist/"
+            done
+            cp -R external/sizzle "$PKG/external/"
+            cp -R src LICENSE.txt AUTHORS.txt package.json "$PKG/"
+            rm -f "$PKG/src/wrapper.js"
+            # README.md comes from the jquery-dist repo itself, not this tree; the
+            # host fetches it (this image's CA bundle is too old for GitHub's TLS).
+            cp /seal/README.md "$PKG/README.md"
+            echo "$README_SHA256  $PKG/README.md" | sha256sum -c -
+            # generateBower() in build/release/dist.js (no trailing newline)
+            node -e '
+              var pkg = require("/src/package.json");
+              require("fs").writeFileSync(process.argv[1], JSON.stringify({
+                name: pkg.name,
+                main: pkg.main,
+                license: "MIT",
+                ignore: [ "package.json" ],
+                keywords: pkg.keywords
+              }, null, 2));
+            ' "$PKG/bower.json"
+            chown -R "$HOST_UID:$HOST_GID" "$STAGE"
+            cd "$STAGE"
+            npm --version
+            npm pack ./package
+            chown "$HOST_UID:$HOST_GID" "$STAGE/jquery-$VERSION.tgz"
+            ls -l "$STAGE/jquery-$VERSION.tgz"
+            ;;
+          *)
+            echo "usage: $0 build|pack" >&2
+            exit 2
+            ;;
+          esac
+          SEAL_EOF
+
+      - name: Fetch the jquery-dist README.md
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/jquery/jquery-dist/3.1.0/README.md \
+            -o "$RUNNER_TEMP/seal/README.md"
+          echo "743016e0a5490bbf4f59165a4a120c89a95ac88a75717ec85712f7152af73b88  $RUNNER_TEMP/seal/README.md" | sha256sum -c -
+
+      - name: Build dist (node:4.4.7)
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/src" -v "$RUNNER_TEMP/seal:/seal" -w /src \
+            node:4.4.7 bash /seal/seal-build.sh build
+
+      # Self-check: on the unmodified 3.1.0 sources (fingerprint below, taken
+      # after the build restored src/core.js) the regenerated dist/ must be
+      # byte-identical to the tracked release files. Once src/ carries
+      # patches, dist/ legitimately differs and is only reported.
+      - name: Regenerated dist matches the tracked files
+        run: |
+          SRC_FP="$(cd src && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+          echo "src/ fingerprint: $SRC_FP"
+          if [ "$SRC_FP" = "56702908b7a872c171cbf46ad5797ab8589deef0b9c367471694b7d5a578d875" ]; then
+            git diff --exit-code --stat -- dist/
+            echo "dist/ regenerated byte-identically from the 3.1.0 sources"
+          else
+            echo "src/ differs from the 3.1.0 release sources; regenerated dist/ changes:"
+            git diff --stat -- dist/
+          fi
+
+      - name: Assemble the jquery-dist tree and npm pack (npm 2.15.8)
+        run: |
+          docker run --rm \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/src:ro" -v "$RUNNER_TEMP/seal:/seal" -w /src \
+            node:4.4.7 bash /seal/seal-build.sh pack
+          ls "$RUNNER_TEMP"/seal/stage/jquery-*.tgz
+          tar tzf "$RUNNER_TEMP"/seal/stage/jquery-*.tgz | wc -l
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jquery-npm-tgz
+          path: ${{ runner.temp }}/seal/stage/jquery-*.tgz
+          if-no-files-found: error

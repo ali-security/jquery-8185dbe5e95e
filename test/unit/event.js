@@ -153,7 +153,7 @@ QUnit.test( "on(), multiple events at once and namespaces", function( assert ) {
 	var cur, div,
 		obj = {};
 
-	div = jQuery( "<div/>" ).on( "focusin.a", function( e ) {
+	div = jQuery( "<div></div>" ).on( "focusin.a", function( e ) {
 		assert.equal( e.type, cur, "Verify right single event was fired." );
 	} );
 
@@ -163,7 +163,7 @@ QUnit.test( "on(), multiple events at once and namespaces", function( assert ) {
 	// manually clean up detached elements
 	div.remove();
 
-	div = jQuery( "<div/>" ).on( "click mouseover", obj, function( e ) {
+	div = jQuery( "<div></div>" ).on( "click mouseover", obj, function( e ) {
 		assert.equal( e.type, cur, "Verify right multi event was fired." );
 		assert.equal( e.data, obj, "Make sure the data came in correctly." );
 	} );
@@ -177,7 +177,7 @@ QUnit.test( "on(), multiple events at once and namespaces", function( assert ) {
 	// manually clean up detached elements
 	div.remove();
 
-	div = jQuery( "<div/>" ).on( "focusin.a focusout.b", function( e ) {
+	div = jQuery( "<div></div>" ).on( "focusin.a focusout.b", function( e ) {
 		assert.equal( e.type, cur, "Verify right multi event was fired." );
 	} );
 
@@ -195,7 +195,7 @@ QUnit.test( "on(), namespace with special add", function( assert ) {
 	assert.expect( 27 );
 
 	var i = 0,
-		div = jQuery( "<div/>" ).appendTo( "#qunit-fixture" ).on( "test", function() {
+		div = jQuery( "<div></div>" ).appendTo( "#qunit-fixture" ).on( "test", function() {
 			assert.ok( true, "Test event fired." );
 		} );
 
@@ -244,7 +244,7 @@ QUnit.test( "on(), namespace with special add", function( assert ) {
 	// Should trigger 4
 	div.off( "test" );
 
-	div = jQuery( "<div/>" ).on( "test", function() {
+	div = jQuery( "<div></div>" ).on( "test", function() {
 		assert.ok( true, "Test event fired." );
 	} );
 
@@ -858,7 +858,7 @@ QUnit.test( "mouseover triggers mouseenter", function( assert ) {
 	assert.expect( 1 );
 
 	var count = 0,
-		elem = jQuery( "<a />" );
+		elem = jQuery( "<a></a>" );
 	elem.on( "mouseenter", function() {
 		count++;
 	} );
@@ -872,7 +872,7 @@ QUnit.test( "pointerover triggers pointerenter", function( assert ) {
 	assert.expect( 1 );
 
 	var count = 0,
-		elem = jQuery( "<a />" );
+		elem = jQuery( "<a></a>" );
 	elem.on( "pointerenter", function() {
 		count++;
 	} );
@@ -1057,7 +1057,7 @@ QUnit.test( "submit event bubbles on copied forms (#11649)", function( assert ) 
 	var $formByClone, $formByHTML,
 		$testForm = jQuery( "#testForm" ),
 		$fixture = jQuery( "#qunit-fixture" ),
-		$wrapperDiv = jQuery( "<div/>" ).appendTo( $fixture );
+		$wrapperDiv = jQuery( "<div></div>" ).appendTo( $fixture );
 
 	function noSubmit( e ) {
 		e.preventDefault();
@@ -1093,7 +1093,7 @@ QUnit.test( "change event bubbles on copied forms (#11796)", function( assert ) 
 	var $formByClone, $formByHTML,
 		$form = jQuery( "#form" ),
 		$fixture = jQuery( "#qunit-fixture" ),
-		$wrapperDiv = jQuery( "<div/>" ).appendTo( $fixture );
+		$wrapperDiv = jQuery( "<div></div>" ).appendTo( $fixture );
 
 	function delegatedChange() {
 		assert.ok( true, "Make sure change event bubbles up." );
@@ -1123,7 +1123,7 @@ QUnit.test( "trigger(eventObject, [data], [fn])", function( assert ) {
 	assert.expect( 28 );
 
 	var event,
-		$parent = jQuery( "<div id='par' />" ).appendTo( "body" ),
+		$parent = jQuery( "<div id='par'></div>" ).appendTo( "body" ),
 		$child = jQuery( "<p id='child'>foo</p>" ).appendTo( $parent );
 
 	$parent.get( 0 ).style.display = "none";
@@ -2716,7 +2716,7 @@ QUnit.test( ".off() removes the expando when there's no more data", function( as
 	assert.expect( 2 );
 
 	var key,
-		div = jQuery( "<div/>" ).appendTo( "#qunit-fixture" );
+		div = jQuery( "<div></div>" ).appendTo( "#qunit-fixture" );
 
 	div.on( "click", false );
 	div.on( "custom", function() {
@@ -2952,7 +2952,7 @@ QUnit[ jQuery.fn.click ? "test" : "skip" ]( "trigger() shortcuts", function( ass
 QUnit[ jQuery.fn.click ? "test" : "skip" ]( "Event aliases", function( assert ) {
 
 	// Explicitly skipping focus/blur events due to their flakiness
-	var	$elem = jQuery( "<div />" ).appendTo( "#qunit-fixture" ),
+	var	$elem = jQuery( "<div></div>" ).appendTo( "#qunit-fixture" ),
 		aliases = ( "resize scroll click dblclick mousedown mouseup " +
 			"mousemove mouseover mouseout mouseenter mouseleave change " +
 			"select submit keydown keypress keyup contextmenu" ).split( " " );

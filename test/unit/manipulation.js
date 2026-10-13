@@ -2756,7 +2756,7 @@ QUnit.test( "Sanitized HTML doesn't get unsanitized", function( assert ) {
 
 	var container,
 		counter = 0,
-		assertCount = 11,
+		assertCount = 12,
 		done = assert.async( assertCount );
 
 	assert.expect( assertCount );
@@ -2797,6 +2797,39 @@ QUnit.test( "Sanitized HTML doesn't get unsanitized", function( assert ) {
 	test( "<foo\" alt=\"\" title=\"/><img src=url404 onerror=xss(8)>\">" );
 	test( "<img alt=\"<x\" title=\"\" src=\"/><img src=url404 onerror=xss(9)>\">" );
 	test( "<noscript/><img src=url404 onerror=xss(10)>" );
+
+	test( "<option><style></option></select><img src=url404 onerror=xss(11)></style>" );
+} );
+
+QUnit.test( "<option> HTML isn't parsed inside a <select> wrapper (CVE-2020-11023)", function( assert ) {
+	var nodes, children,
+		html = "<option>x</option></select><b>y</b>",
+		div = document.createElement( "div" );
+
+	// Support: IE <=9 only
+	// IE <=9 drops <option> tags inserted outside of a select element,
+	// so the <select> wrapper is still required there.
+	div.innerHTML = "<option></option>";
+	if ( !div.lastChild ) {
+		assert.expect( 1 );
+		assert.ok( true, "IE <=9 needs the <select> wrapper; skipped" );
+		return;
+	}
+
+	assert.expect( 6 );
+
+	// Wrapping <option> markup in "<select multiple='multiple'>" lets a stray
+	// </select> in the (possibly sanitized) input close the wrapper and changes
+	// the context in which the rest of the markup is parsed.
+	nodes = jQuery.parseHTML( html );
+	assert.strictEqual( nodes.length, 2, "parseHTML: both elements are kept" );
+	assert.ok( jQuery.nodeName( nodes[ 0 ], "option" ), "parseHTML: first node is the <option>" );
+	assert.ok( jQuery.nodeName( nodes[ 1 ], "b" ), "parseHTML: second node is the <b>" );
+
+	children = jQuery( "<div></div>" ).append( html ).children();
+	assert.strictEqual( children.length, 2, "append: both elements are kept" );
+	assert.ok( jQuery.nodeName( children[ 0 ], "option" ), "append: first child is the <option>" );
+	assert.ok( jQuery.nodeName( children[ 1 ], "b" ), "append: second child is the <b>" );
 } );
 
 QUnit.test( "jQuery.htmlPrefilter doesn't expand self-closed tags (CVE-2020-11022)", function( assert ) {
